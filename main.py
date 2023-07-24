@@ -7,6 +7,9 @@ import math
 import redis.asyncio as redis
 import logging
 from elasticsearch import AsyncElasticsearch
+from redis.asyncio.client import Redis
+
+logging.basicConfig(level=logging.INFO)
 
 
 redis_url = os.getenv('REDIS_URL')
@@ -14,8 +17,12 @@ if not redis_url:
     raise Exception('REDIS_URL environment variable not set')
 
 elastic_url = os.getenv('ELASTIC_URL')
-
+if not elastic_url:
+    raise Exception('ELASTIC_URL environment variable not set')
+logging.error("elastic_url: " + elastic_url)
+logging.error("redis_url: " + redis_url)
 pool = redis.connection.ConnectionPool.from_url(url=redis_url)
+redis = Redis(connection_pool=pool)
 es = AsyncElasticsearch(hosts=[elastic_url])
 
 
@@ -45,9 +52,8 @@ async def update_visit_expire(request):
         redis.call('expire', KEYS[1]..'_'..KEYS[2], 45);
     """
 
-    with await pool.get_connection("update_visit_expire") as conn:
-        result = await conn.execute('EVAL', command, 3, tenant_id, browser_id, next_list)
-        logging.error("result: %s", result)
+    result = await redis.eval(command, 3, tenant_id, browser_id, next_list)
+    # logging.error("result: %s", result)
     return web.Response(text="")
 
 async def track_button_impression(request):
@@ -58,10 +64,10 @@ async def track_button_impression(request):
     redis.call('expire', KEYS[1], 5400)
     """
     url_param = request.query.get('p')
+    # logging.info("skusam", "la-hosted_" + request.query.get("i"), url_param, time)
+    result = await redis.eval(command, 1, "la-hosted_" + request.query.get("i"), url_param, time)
+    # logging.info("result: ", result)
 
-    with await pool.get_connection("track_button_impression") as conn:
-        result = await conn.execute("eval", command, 1, "la-hosted_" + request.query.get("i"), url_param, time)
-        logging.error("result: %s", result)
     return web.Response(text="")
 
 
@@ -83,38 +89,38 @@ async def track_visit(request):
                 redis.call('expire', KEYS[3], 140)
     """
 
-    with await pool.get_connection("track_visit") as conn:
-        browser = request.query.get("b")
-        session = request.query.get("s")
-        page_title = request.query.get("pt")
-        page_url = request.query.get("url")
-        page_ref = request.query.get("ref")
-        screen = request.query.get("sr")
-        user_details = request.query.get("ud")
-        now = await get_time()
-        visitor_new = request.query.get("vn")
-        ip = request.remote
-        jsTrack = request.query.get("jstk")
-        result = await conn.execute("eval", command, 3, "la-hosted_"+ browser, current_list, next_list, session, now, datetime.datetime.now().timestamp(), page_url, page_ref, ip, request.headers["user_agent"], screen, user_details, visitor_new, browser)
-        logging.error("result: %s", result)
+
+    browser = request.query.get("B")
+    session = request.query.get("S")
+    page_title = request.query.get("pt")
+    page_url = request.query.get("url")
+    page_ref = request.query.get("ref")
+    screen = request.query.get("sr")
+    user_details = request.query.get("ud")
+    now = await get_time()
+    visitor_new = request.query.get("vn")
+    ip = request.remote
+    jsTrack = request.query.get("jstk")
+    print(request.headers)
+    result = await redis.eval(command, 3, "la-hosted_"+ browser, current_list, next_list, session, now, datetime.datetime.now().timestamp(), page_url, page_ref, ip, request.headers["User-Agent"], screen, user_details, visitor_new, browser)
+    # logging.error("result: %s", result)
 
 
-        index = "la_perf_pagevisit_v1.1_" + datetime.date.today().strftime("%Y_%m_%d")
+    index = "la_perf_pagevisit_v1.1_" + datetime.date.today().strftime("%Y_%m_%d")
 
-        result = await es.index(index=index, document={"b":browser, "dv":now, "t":page_title, "u":page_url, "r":page_ref, "tenant_id":"la-hosted"})
-        logging.error("result: %s", result)
+    result = await es.index(index=index, document={"b":browser, "dv":now, "t":page_title, "u":page_url, "r":page_ref, "tenant_id":"la-hosted"})
+    logging.error("result: ", result)
 
 
     return web.Response(text="")
 
 
 
-app = web.Application()
+app = web.Application(logger=logging.root)
 app.add_routes([web.get('/', handle),
                 web.get('/update_visit_expire/{session}/{tenantId}/{browserId}', update_visit_expire),
                 web.get('/track_button_impression', track_button_impression),
                 web.get('/track_visit', track_visit)
                 ])
 
-if __name__ == '__main__':
-    web.run_app(app)
+web.run_app(app, port=80)
