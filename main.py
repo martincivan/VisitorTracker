@@ -6,12 +6,17 @@ import datetime
 import math
 import redis.asyncio as redis
 import logging
+from elasticsearch import AsyncElasticsearch
+
 
 redis_url = os.getenv('REDIS_URL')
 if not redis_url:
     raise Exception('REDIS_URL environment variable not set')
 
+elastic_url = os.getenv('ELASTIC_URL')
+
 pool = redis.connection.ConnectionPool.from_url(url=redis_url)
+es = AsyncElasticsearch(hosts=[elastic_url])
 
 
 async def handle(request):
@@ -92,7 +97,16 @@ async def track_visit(request):
         jsTrack = request.query.get("jstk")
         result = await conn.execute("eval", command, 3, "la-hosted_"+ browser, current_list, next_list, session, now, datetime.datetime.now().timestamp(), page_url, page_ref, ip, request.headers["user_agent"], screen, user_details, visitor_new, browser)
         logging.error("result: %s", result)
+
+
+        index = "la_perf_pagevisit_v1.1_" + datetime.date.today().strftime("%Y_%m_%d")
+
+        result = await es.index(index=index, document={"b":browser, "dv":now, "t":page_title, "u":page_url, "r":page_ref, "tenant_id":"la-hosted"})
+        logging.error("result: %s", result)
+
+
     return web.Response(text="")
+
 
 
 app = web.Application()
