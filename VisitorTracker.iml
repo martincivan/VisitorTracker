@@ -3,7 +3,7 @@
   <component name="NewModuleRootManager" inherit-compiler-output="true">
     <exclude-output />
     <content url="file://$MODULE_DIR$" />
-    <orderEntry type="jdk" jdkName="Python 3.11 (VisitorTracker)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Remote Python 3.11.4 Docker Compose (visitor-tracking at [/home/martin/IdeaProjects/VisitorTracker/docker-compose.yml])" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
