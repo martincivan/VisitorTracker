@@ -33,7 +33,7 @@ async def handle(request):
 
 
 def get_next_list(tenant_id: str, timestamp: Optional[float] = None) -> str:
-    minutes = math.floor(timestamp or datetime.datetime.now().timestamp() / 60)
+    minutes = math.floor((timestamp or datetime.datetime.now().timestamp()) / 60)
     return f'{tenant_id}_{minutes}'
 
 
@@ -65,7 +65,7 @@ async def track_button_impression(request):
     """
     url_param = request.query.get('p')
     # logging.info("skusam", "la-hosted_" + request.query.get("i"), url_param, time)
-    result = await redis.eval(command, 1, "la-hosted_" + request.query.get("i"), url_param, time)
+    result = await redis.eval(command, 1, "hosted_" + request.query.get("i"), url_param, time)
     # logging.info("result: ", result)
 
     return web.Response(text="")
@@ -77,8 +77,8 @@ async def get_time():
 
 async def track_visit(request):
     time = datetime.datetime.now().timestamp()
-    next_list = get_next_list("la-hosted", time)
-    current_list = get_next_list("la-hosted", time - 60)
+    next_list = get_next_list("hosted", time)
+    current_list = get_next_list("hosted", time - 60)
     command = """
     redis.call('hmset', KEYS[1], 's', ARGV[1], 'dlv', ARGV[2], 'tt', ARGV[3], 'u', ARGV[4], 'r', ARGV[5], 'i', ARGV[6], 'ua', ARGV[7], 'sc', ARGV[8], 'ud', ARGV[9], 'vn', ARGV[10])
                 redis.call('hsetnx', KEYS[1], 'dfv', ARGV[2])
@@ -102,14 +102,13 @@ async def track_visit(request):
     ip = request.remote
     jsTrack = request.query.get("jstk")
     print(request.headers)
-    result = await redis.eval(command, 3, "la-hosted_"+ browser, current_list, next_list, session, now, datetime.datetime.now().timestamp(), page_url, page_ref, ip, request.headers["User-Agent"], screen, user_details, visitor_new, browser)
+    result = await redis.eval(command, 3, "hosted_"+ browser, current_list, next_list, session, now, datetime.datetime.now().timestamp(), page_url, page_ref, ip, request.headers["User-Agent"], screen, user_details, visitor_new, browser)
     # logging.error("result: %s", result)
 
 
     index = "la_perf_pagevisit_v1.1_" + datetime.date.today().strftime("%Y_%m_%d")
 
-    result = await es.index(index=index, document={"b":browser, "dv":now, "t":page_title, "u":page_url, "r":page_ref, "tenant_id":"la-hosted"})
-    logging.error("result: ", result)
+    result = await es.index(index=index, document={"b":browser, "dv":now, "t":page_title, "u":page_url, "r":page_ref, "tenant_id":"hosted"})
 
 
     return web.Response(text="")
